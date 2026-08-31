@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: python -m pip install --upgrade pip ruff==0.6.9
+
+      - name: Ruff (errors only — F63/F7/F82 = syntax/undefined/unused, E9 = invalid)
+        run: ruff check --select=E9,F63,F7,F82 --output-format=github .
+
+      - name: Ruff style (advisory, never fails the build)
+        continue-on-error: true
+        run: ruff check --output-format=github .
+
+      - name: Python syntax (compileall)
+        run: python -m compileall -q .
+
+      - name: Markdown link sanity (optional)
+        continue-on-error: true
+        run: |
+          python - <<'PY'
+          import re, pathlib
+          bad = []
+          for p in pathlib.Path('.').rglob('*.md'):
+            try:
+              t = p.read_text(encoding='utf-8', errors='ignore')
+            except Exception:
+              continue
+            for m in re.finditer(r'\]\((https?://[^)]+)\)', t):
+              if ' ' in m.group(1):
+                bad.append((p, m.group(1)))
+          if bad:
+            print('Suspicious URLs (contain spaces):')
+            for p, u in bad:
+              print(f'  {p}: {u}')
+          PY
